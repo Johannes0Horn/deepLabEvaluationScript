@@ -215,34 +215,204 @@ $(document).ready(function () {
             }
             //console.log("trunk contours drawn");
             //4.) FIND MIN AREA RECT OF CONTOURS
-            let trunkRect = cv.Mat.zeros(trunk.rows, trunk.cols, cv.CV_8UC3);
-            let trunkRotatedRect = cv.minAreaRect(contours.get(0));
-            let trunkVertices = cv.RotatedRect.points(trunkRotatedRect);
+            //TODO: MAYBE USE ONLY ONE CONTOUR:merge 2 biggest Area contours(if more than 1) to one remaining contour to feed to convexHull and get average diameter from it!
+            //TODO: If 2 masks, check if both have realistic size
+            let trunkRects = cv.Mat.zeros(trunk.rows, trunk.cols, cv.CV_8UC3);
             let trunkRectangleColor = new cv.Scalar(255, 0, 0);
-            //DRAW MIN AREA RECT OF CONTOURS
-            //console.log("card begin draw rectangle");
-            for (let i = 0; i < 4; i++) {
-                cv.line(trunkRect, trunkVertices[i], trunkVertices[(i + 1) % 4], trunkRectangleColor, 2, cv.LINE_AA, 0);
+
+            //let trunklongerSide;
+            let trunkshorterSide;
+            let diameter1;
+            let diameter2;
+            //console.log("number of contours: ", contours.size());
+
+
+            if (contours.size() > 1) {
+                //more than one contour
+                //get 2 biggest area contours
+                biggestContoursIndexes = [];
+                biggestAreas = [];
+                for (let i = 0; i < contours.size(); i++) {
+                    let area = cv.contourArea(contours.get(i));
+                    if (biggestAreas.length >= 2) {
+                        if (area > biggestAreas[0]) {
+                            biggestAreas[0] = area;
+                            biggestContoursIndexes[0] = i;
+                        } else if (area > biggestAreas[1]) {
+                            biggestAreas[1] = area;
+                            biggestContoursIndexes[1] = i;
+                        }
+                    } else {
+                        biggestAreas.push(area);
+                        biggestContoursIndexes.push(i);
+                    }
+                }
+
+                //get rectangles from contours
+                let trunkRotatedRect1 = cv.minAreaRect(contours.get(biggestContoursIndexes[0]));
+                let trunkVertices1 = cv.RotatedRect.points(trunkRotatedRect1);
+
+                let trunkRotatedRect2 = cv.minAreaRect(contours.get(biggestContoursIndexes[1]));
+                let trunkVertices2 = cv.RotatedRect.points(trunkRotatedRect2);
+                //draw rectangels
+
+                //DRAW MIN AREA RECT OF CONTOURS
+                //console.log("card begin draw rectangle");
+                for (let i = 0; i < 4; i++) {
+                    cv.line(trunkRects, trunkVertices1[i], trunkVertices1[(i + 1) % 4], trunkRectangleColor, 2, cv.LINE_AA, 0);
+                    cv.line(trunkRects, trunkVertices2[i], trunkVertices2[(i + 1) % 4], trunkRectangleColor, 2, cv.LINE_AA, 0);
+
+                }
+                //get centers of rectangles
+                //1
+                xCoordinates1 = 0;
+                yCoordinates1 = 0;
+                xCoordinates2 = 0;
+                yCoordinates2 = 0;
+                for (let i = 0; i < 4; i++) {
+                    xCoordinates1 += trunkVertices1[i]["x"];
+                    yCoordinates1 += trunkVertices1[i]["y"];
+                    xCoordinates2 += trunkVertices2[i]["x"];
+                    yCoordinates2 += trunkVertices2[i]["y"];
+                }
+                let center1 = [xCoordinates1 / 4, yCoordinates1 / 4];
+                let center2 = [xCoordinates2 / 4, yCoordinates2 / 4];
+                //console.log("center1", center1);
+                //console.log("center2", center2);
+
+                //check if parts of trunk are stacked above or next to each other
+                if (Math.abs(center1[0] - center2[0]) < Math.abs(center1[1] - center2[1])) {
+                    console.log("above each other");
+                    //above each other
+                    //RECTANGLE 1
+                    //get 2 highest points
+                    let highestPoint1 = [trunkVertices1[0]["x"], trunkVertices1[0]["y"]];
+                    let highestPoint2 = [trunkVertices1[1]["x"], trunkVertices1[1]["y"]];
+
+                    for (let i = 2; i < 4; i++) {
+                        if (trunkVertices1[i]["y"] > highestPoint1[1]) {
+                            highestPoint1[0] = trunkVertices1[i]["x"];
+                            highestPoint1[1] = trunkVertices1[i]["y"];
+                        } else if (trunkVertices1[i]["y"] > highestPoint2[1]) {
+                            highestPoint2[0] = trunkVertices1[i]["x"];
+                            highestPoint2[1] = trunkVertices1[i]["y"];
+                        }
+                    }
+                    //console.log("highestPoint1.1", highestPoint1);
+                    //console.log("highestPoint1.2", highestPoint2);
+
+
+                    //get side above trunk
+                    diameter1 = getRange(highestPoint1[0], highestPoint1[1], highestPoint2[0], highestPoint2[1]);
+                    //RECTANGLE 2
+                    //get 2 highest points
+                    highestPoint1 = [trunkVertices2[0]["x"], trunkVertices2[0]["y"]];
+                    highestPoint2 = [trunkVertices2[1]["x"], trunkVertices2[1]["y"]];
+
+                    for (let i = 2; i < 4; i++) {
+                        if (trunkVertices2[i]["y"] > highestPoint1[1]) {
+                            highestPoint1[0] = trunkVertices2[i]["x"];
+                            highestPoint1[1] = trunkVertices2[i]["y"];
+                        } else if (trunkVertices2[i]["y"] > highestPoint2[1]) {
+                            highestPoint2[0] = trunkVertices2[i]["x"];
+                            highestPoint2[1] = trunkVertices2[i]["y"];
+                        }
+                    }
+                    //console.log("highestPoint2.1", highestPoint1);
+                    //console.log("highestPoint2.2", highestPoint2);
+
+                    //get side above trunk
+                    diameter2 = getRange(highestPoint1[0], highestPoint1[1], highestPoint2[0], highestPoint2[1]);
+                    //console.log("diamter1:", diameter1);
+                    //console.log("diamter2:", diameter2);
+
+                } else {
+                    //next to each other
+                    //console.log("next to each other");
+
+                    //RECTANGLE 1
+                    //get 2 most right points
+                    let mostRightPoint1 = [];
+                    let mostRightPoint2 = [];
+
+
+                    for (let i = 0; i < 4; i++) {
+                        if (mostRightPoint1.length < 2) {
+                            mostRightPoint1[0] = trunkVertices1[i]["x"];
+                            mostRightPoint1[1] = trunkVertices1[i]["y"];
+                            mostRightPoint2[0] = trunkVertices1[i]["x"];
+                            mostRightPoint2[1] = trunkVertices1[i]["y"];
+
+                        } else {
+
+                            if (trunkVertices1[i]["x"] > mostRightPoint1[0]) {
+                                mostRightPoint1[0] = trunkVertices1[i]["x"];
+                                mostRightPoint1[1] = trunkVertices1[i]["y"];
+                            } else if (trunkVertices1[i]["x"] > mostRightPoint2[0]) {
+                                mostRightPoint2[0] = trunkVertices1[i]["x"];
+                                mostRightPoint2[1] = trunkVertices1[i]["y"];
+                            }
+                        }
+                    }
+
+                    //console.log("mostRightPoint1.1", mostRightPoint1);
+                    //console.log("mostRightPoint1.2", mostRightPoint2);
+
+                    //get side above trunk
+                    diameter1 = getRange(mostRightPoint1[0], mostRightPoint1[1], mostRightPoint2[0], mostRightPoint2[1]);
+
+                    //RECTANGLE 2
+                    //get 2 highest points
+                    mostRightPoint1 = [trunkVertices2[0]["x"], trunkVertices2[0]["y"]];
+                    mostRightPoint2 = [trunkVertices2[1]["x"], trunkVertices2[1]["y"]];
+
+                    for (let i = 0; i < 2; i++) {
+                        if (trunkVertices2[i]["y"] > mostRightPoint1[1]) {
+                            mostRightPoint1[0] = trunkVertices2[i]["x"];
+                            mostRightPoint1[1] = trunkVertices2[i]["y"];
+                        } else if (trunkVertices2[i]["y"] > mostRightPoint2[1]) {
+                            mostRightPoint2[0] = trunkVertices2[i]["x"];
+                            mostRightPoint2[1] = trunkVertices2[i]["y"];
+                        }
+                    }
+
+                    console.log("mostRightPoint2.1", mostRightPoint1);
+                    console.log("mostRightPoint2.2", mostRightPoint2);
+                    //get side above trunk
+                    diameter2 = getRange(mostRightPoint1[0], mostRightPoint1[1], mostRightPoint2[0], mostRightPoint2[1]);
+                    console.log("diamter1:", diameter1);
+                    console.log("diamter2:", diameter2);
+                }
+                trunkshorterSide = (diameter1 + diameter2) / 2;
+
+
+            } else {
+                //only one Contour!
+                let trunkRotatedRect = cv.minAreaRect(contours.get(0));
+                let trunkVertices = cv.RotatedRect.points(trunkRotatedRect);
+
+                //DRAW MIN AREA RECT OF CONTOURS
+                console.log("card begin draw rectangle");
+                for (let i = 0; i < 4; i++) {
+                    cv.line(trunkRects, trunkVertices[i], trunkVertices[(i + 1) % 4], trunkRectangleColor, 2, cv.LINE_AA, 0);
+                }
+
+                // 5.) GET SIZE OF TRUNK_RECTANGLE IN PIXELS
+                //check range to each point from point [0], second most far away is point to longer side
+                range0_to_1 = getRange(trunkVertices[0]["x"], trunkVertices[0]["y"], trunkVertices[1]["x"], trunkVertices[1]["y"]);
+                range0_to_2 = getRange(trunkVertices[0]["x"], trunkVertices[0]["y"], trunkVertices[2]["x"], trunkVertices[2]["y"]);
+                range0_to_3 = getRange(trunkVertices[0]["x"], trunkVertices[0]["y"], trunkVertices[3]["x"], trunkVertices[3]["y"]);
+
+                //get second biggest
+                distances = [range0_to_1, range0_to_2, range0_to_3];
+                distances.sort(function (a, b) {
+                    return a - b
+                });
+                //trunklongerSide = distances[1];
+                trunkshorterSide = distances [0];
             }
 
-            // 5.) GET SIZE OF TRUNK_RECTANGLE IN PIXELS
-            //check range to each point from point [0], second most far away is point to longer side
-            range0_to_1 = getRange(trunkVertices[0]["x"], trunkVertices[0]["y"], trunkVertices[1]["x"], trunkVertices[1]["y"]);
-            range0_to_2 = getRange(trunkVertices[0]["x"], trunkVertices[0]["y"], trunkVertices[2]["x"], trunkVertices[2]["y"]);
-            range0_to_3 = getRange(trunkVertices[0]["x"], trunkVertices[0]["y"], trunkVertices[3]["x"], trunkVertices[3]["y"]);
 
-            //get second biggest
-            distances = [range0_to_1, range0_to_2, range0_to_3];
-            distances.sort(function (a, b) {
-                return a - b
-            });
-            let trunklongerSide = distances[1];
-            let trunkshorterSide = distances [0];
-
-            //console.log("trunklong: ", trunklongerSide);
-            //console.log("trunkshort: ", trunkshorterSide);
-            //console.log("cardlong: ", cardlongerSide);
-            //console.log("cardshort: ", cardshorterSide);
 
             //COMPARE SIZES TO ESTIMATE DIAMETER
             let cardLength = 856; //mm
